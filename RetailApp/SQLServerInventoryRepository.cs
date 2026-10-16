@@ -6,11 +6,17 @@ namespace RetailApp
 {
     public class SqlServerInventoryRepository : InventoryRepository
     {
-        // Folosim LocalDB, care funcționează imediat pe orice PC cu Visual Studio instalat
-        //private readonly string _connectionString = "Server=(localdb)\\MSSQLLocalDB;Database=master;Trusted_Connection=True;MultipleActiveResultSets=true";
-        private readonly string _masterConnectionString = "Server=(localdb)\\MSSQLLocalDB;Database=master;Trusted_Connection=True;MultipleActiveResultSets=true";
-        private readonly string _dbConnectionString = "Server=(localdb)\\MSSQLLocalDB;Database=RetailAppDb;Trusted_Connection=True;MultipleActiveResultSets=true";
+        private readonly string _connectionString;
+        public SqlServerInventoryRepository(string connectionString)
+        {
+            _connectionString = connectionString;
+        }
 
+        // Constructor de compatibilitate (dacă vrei să meargă și teste vechi fără parametri)
+        public SqlServerInventoryRepository()
+            : this("Server=(localdb)\\MSSQLLocalDB;Database=RetailInventoryDb;Trusted_Connection=True;")
+        {
+        }
         public void InitiDatabase()
         {
             try
@@ -29,13 +35,17 @@ namespace RetailApp
 
         private void EnsureDatabaseExists()
         {
-            using (SqlConnection conn = new SqlConnection(_masterConnectionString))
+            var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_connectionString);
+            string targetDatabase = builder.InitialCatalog;
+            builder.InitialCatalog = "master"; 
+
+            using (SqlConnection conn = new SqlConnection(builder.ConnectionString))
             {
                 conn.Open();
-                string createDbQuery = @"
-                    IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'RetailAppDb')
+                string createDbQuery = $@"
+                    IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{targetDatabase}')
                     BEGIN
-                        CREATE DATABASE RetailAppDb;
+                        CREATE DATABASE [{targetDatabase}];
                     END
                 ";
                 using (SqlCommand cmd = new SqlCommand(createDbQuery, conn))
@@ -47,7 +57,7 @@ namespace RetailApp
 
         private void EnsureTablesAndSeedExist()
         {
-            using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
                 conn.Open();
                 string checkTableQuery = @"
@@ -102,7 +112,7 @@ namespace RetailApp
 
         public DataTable GetAllProducts()
         {
-            using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
                 conn.Open();
                 string query = "SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] FROM Products p INNER JOIN Stock s ON p.Id = s.ProductId";
@@ -120,7 +130,7 @@ namespace RetailApp
 
         public DataTable SearchProduct(string search)
         {
-            using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
                 conn.Open();
                 SqlCommand sqcmd = conn.CreateCommand();
@@ -160,7 +170,7 @@ namespace RetailApp
 
             try
             {
-                using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+                using (SqlConnection conn = new SqlConnection(_connectionString))
                 {
                     conn.Open();
                     using (SqlTransaction transaction = conn.BeginTransaction())
@@ -215,7 +225,7 @@ namespace RetailApp
 
             try
             {
-                using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+                using (SqlConnection conn = new SqlConnection(_connectionString))
                 {
                     conn.Open();
                     string query = "UPDATE Stock SET Quantity = Quantity + @qty WHERE ProductId = @pId";
@@ -246,7 +256,7 @@ namespace RetailApp
 
         public DataTable GetSalesHistory()
         {
-            using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
                 conn.Open();
                 string query = @"
@@ -284,7 +294,7 @@ namespace RetailApp
 
             try
             {
-                using (SqlConnection conn = new SqlConnection(_dbConnectionString))
+                using (SqlConnection conn = new SqlConnection(_connectionString))
                 {
                     conn.Open();
                     using (SqlTransaction transaction = conn.BeginTransaction())
