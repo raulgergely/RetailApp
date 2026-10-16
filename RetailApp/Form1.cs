@@ -102,7 +102,7 @@ namespace RetailApp
 
                     if (stockValue < 10)
                     {
-                        row.DefaultCellStyle.BackColor = System.Drawing.Color.FromArgb(255, 230, 230); // Roșu deschis (stoc critic)
+                        row.DefaultCellStyle.BackColor = System.Drawing.Color.FromArgb(255, 230, 230); // Red
                         row.DefaultCellStyle.ForeColor = System.Drawing.Color.FromArgb(180, 0, 0);
                     }
                     else
@@ -116,7 +116,6 @@ namespace RetailApp
 
         private void button1_Click(object sender, EventArgs e)
         {
-            // Vânzare rapidă (single-item - păstrată pentru compatibilitate)
             if (dataGridView1.SelectedRows.Count == 0)
             {
                 MessageBox.Show("Please select a product from the table!", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -194,7 +193,6 @@ namespace RetailApp
             }
         }
 
-        // --- FLUXUL NOU DE COȘ (MULTI-ARTICOL) ---
 
         private void btnAddToCart_Click(object sender, EventArgs e)
         {
