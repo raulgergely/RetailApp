@@ -15,5 +15,6 @@ namespace RetailApp
         bool ProcessSale(int productId, int quantityToSell, decimal price, out string errorMessage);
         bool RestockProduct(int productId, int quantityToAdd, out string errorMessage);
         DataTable GetSalesHistory();
+        bool ProcessCartSale(List<CartItem> cartItems, out string errorMessage);
     }
 }
