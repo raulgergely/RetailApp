@@ -1,3 +1,4 @@
 <Solution>
-  <Project Path="RetailApp/RetailApp.csproj" />
+  <Project Path="RetailApp.Tests/RetailApp.Tests.csproj" Id="15f53422-c1b4-4c50-ae5e-dd054aadffaf" />
+  <Project Path="RetailApp/RetailApp.csproj" Id="265bffe7-207d-4dbb-b4c7-9b7e45176ad4" />
 </Solution>
