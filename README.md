@@ -4,7 +4,7 @@ A professional desktop Point of Sale (POS) and inventory management system built
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Multi-Item Cart System:** Add multiple products to a dynamic cart, manage quantities, remove items, and calculate grand totals seamlessly.
 * **Inventory Control & Real-Time Search:** Real-time stock tracking with dynamic low-stock visual alerts (highlighting products with low quantities) and instant product searching.
@@ -14,7 +14,7 @@ A professional desktop Point of Sale (POS) and inventory management system built
 
 ---
 
-## 🏛️ Architecture & Engineering Highlights
+## Architecture & Engineering Highlights
 
 This project follows clean code principles and industry best practices:
 * **Repository Pattern:** Decouples data access logic from the user interface via structured repository interfaces (`IInventoryRepository`).
@@ -24,7 +24,7 @@ This project follows clean code principles and industry best practices:
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 * **Language:** C# (.NET)
 * **UI Framework:** Windows Forms (WinForms)
@@ -46,4 +46,4 @@ RetailApp/
 ├── SqlServerInventoryRepository.cs # SQL Server implementation with atomic transactions
 │
 └── RetailApp.Tests/            # xUnit automated test suite
-    └── InventoryControllerTests.cs
+    └── InventoryRepositoryTests.cs
