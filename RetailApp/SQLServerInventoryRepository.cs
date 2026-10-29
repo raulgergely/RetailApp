@@ -43,9 +43,7 @@ namespace RetailApp
                 conn.Open();
 
                 string createDbQuery = "IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '" + targetDatabase + "') " +
-                                       "BEGIN " +
-                                       "    CREATE DATABASE [" + targetDatabase + "]; " +
-                                       "END";
+                                       "    CREATE DATABASE [" + targetDatabase + "]; ";
 
                 using (SqlCommand cmd = new SqlCommand(createDbQuery, conn))
                 {
@@ -60,7 +58,7 @@ namespace RetailApp
             {
                 conn.Open();
                 string checkTableQuery = @"
-                    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Products' and xtype='U')
+                    IF NOT EXISTS (SELECT * FROM sys.tables WHERE name='Products')
                     BEGIN
                         CREATE TABLE Products (
                             Id INT IDENTITY(1,1) PRIMARY KEY,
@@ -130,27 +128,34 @@ namespace RetailApp
             using (SqlConnection conn = new SqlConnection(_connectionString))
             {
                 conn.Open();
-                SqlCommand sqcmd = conn.CreateCommand();
+                bool isNumeric = int.TryParse(search, out int productId);
 
-                string query = @"
-                    SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] 
-                    FROM Products p 
-                    INNER JOIN Stock s ON p.Id = s.ProductId 
-                    WHERE p.Id = TRY_CAST(@rawSearch AS INT) OR p.Name LIKE @search";
+                string query = isNumeric
+                    ? @"SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] 
+                        FROM Products p 
+                        INNER JOIN Stock s ON p.Id = s.ProductId 
+                        WHERE p.Id = @productId OR p.Name LIKE @search"
+                    : @"SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] 
+                        FROM Products p 
+                        INNER JOIN Stock s ON p.Id = s.ProductId 
+                        WHERE p.Name LIKE @search";
 
-                using (SqlCommand sqcmd2 = new SqlCommand(query, conn))
+                using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
-                    sqcmd2.Parameters.AddWithValue("@rawSearch", search);
+                    if (isNumeric)
+                    {
+                        cmd.Parameters.AddWithValue("@productId", productId);
+                    }
 
-                    sqcmd2.Parameters.AddWithValue("@search", "%" + search + "%");
+                    cmd.Parameters.AddWithValue("@search", "%" + search + "%");
 
-                    using (SqlDataAdapter adapt = new SqlDataAdapter(sqcmd2))
+                    using (SqlDataAdapter adapt = new SqlDataAdapter(cmd))
                     {
                         DataTable data = new DataTable();
                         adapt.Fill(data);
                         return data;
                     }
-                }
+                } 
             }
         }
 
@@ -177,9 +182,9 @@ namespace RetailApp
                         }
 
                         sqcmd.Parameters.Clear();
-                        sqcmd.CommandText = "INSERT INTO Sales (TotalAmount) VALUES (@total); SELECT SCOPE_IDENTITY();";
+                        sqcmd.CommandText = "INSERT INTO Sales (TotalAmount) VALUES (@total); SELECT SCOPE_IDENTITY();";//get id of the inserted sale
                         sqcmd.Parameters.AddWithValue("@total", price * quantityToSell);
-                        long saleId = Convert.ToInt64(sqcmd.ExecuteScalar());
+                        long saleId = Convert.ToInt64(sqcmd.ExecuteScalar());//use id of the inserted sale to insert into SaleItems
 
                         sqcmd.Parameters.Clear();
                         sqcmd.CommandText = "INSERT INTO SaleItems (SaleId, ProductId, Quantity, UnitPrice) VALUES (@sId, @pId, @qty, @price)";
