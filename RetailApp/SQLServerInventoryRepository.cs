@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using Microsoft.Data.SqlClient;
 
@@ -7,24 +8,22 @@ namespace RetailApp
     public class SqlServerInventoryRepository : InventoryRepository
     {
         private readonly string _connectionString;
+
         public SqlServerInventoryRepository(string connectionString)
         {
             _connectionString = connectionString;
         }
 
-        // Constructor de compatibilitate (dacă vrei să meargă și teste vechi fără parametri)
         public SqlServerInventoryRepository()
             : this("Server=(localdb)\\MSSQLLocalDB;Database=RetailInventoryDb;Trusted_Connection=True;")
         {
         }
+
         public void InitiDatabase()
         {
             try
             {
-                // Pasul 1: Ne asigurăm că baza de date există
                 EnsureDatabaseExists();
-
-                // Pasul 2: Ne asigurăm că tabelele și datele inițiale există
                 EnsureTablesAndSeedExist();
             }
             catch (Exception ex)
@@ -37,17 +36,17 @@ namespace RetailApp
         {
             var builder = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(_connectionString);
             string targetDatabase = builder.InitialCatalog;
-            builder.InitialCatalog = "master"; 
+            builder.InitialCatalog = "master";
 
             using (SqlConnection conn = new SqlConnection(builder.ConnectionString))
             {
                 conn.Open();
-                string createDbQuery = $@"
-                    IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{targetDatabase}')
-                    BEGIN
-                        CREATE DATABASE [{targetDatabase}];
-                    END
-                ";
+
+                string createDbQuery = "IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '" + targetDatabase + "') " +
+                                       "BEGIN " +
+                                       "    CREATE DATABASE [" + targetDatabase + "]; " +
+                                       "END";
+
                 using (SqlCommand cmd = new SqlCommand(createDbQuery, conn))
                 {
                     cmd.ExecuteNonQuery();
@@ -63,7 +62,6 @@ namespace RetailApp
                 string checkTableQuery = @"
                     IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Products' and xtype='U')
                     BEGIN
-                        -- Creăm tabelele doar dacă nu există
                         CREATE TABLE Products (
                             Id INT IDENTITY(1,1) PRIMARY KEY,
                             Name NVARCHAR(150) NOT NULL,
@@ -86,7 +84,6 @@ namespace RetailApp
                             UnitPrice DECIMAL(18,2) NOT NULL
                         );
 
-                        -- Adăugăm datele de test DOAR la prima creare a bazei de date
                         INSERT INTO Products (Name, Price) VALUES ('Coffee Beans 1kg', 45.00); 
                         INSERT INTO Products (Name, Price) VALUES ('Artisanal Chocolate', 15.50); 
                         INSERT INTO Products (Name, Price) VALUES ('Organic Green Tea', 22.00); 
@@ -135,122 +132,85 @@ namespace RetailApp
                 conn.Open();
                 SqlCommand sqcmd = conn.CreateCommand();
 
-                if (int.TryParse(search, out int searchId))
-                {
-                    sqcmd.CommandText = @"
-                        SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] 
-                        FROM Products p 
-                        INNER JOIN Stock s ON p.Id = s.ProductId 
-                        WHERE p.Id = @id OR p.Name LIKE @search";
-                    sqcmd.Parameters.AddWithValue("@id", searchId);
-                    sqcmd.Parameters.AddWithValue("@search", "%" + search + "%");
-                }
-                else
-                {
-                    sqcmd.CommandText = @"
-                        SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] 
-                        FROM Products p 
-                        INNER JOIN Stock s ON p.Id = s.ProductId 
-                        WHERE p.Name LIKE @search";
-                    sqcmd.Parameters.AddWithValue("@search", "%" + search + "%");
-                }
+                string query = @"
+                    SELECT p.Id, p.Name AS [Product], p.Price AS [Price (€)], s.Quantity AS [Quantity] 
+                    FROM Products p 
+                    INNER JOIN Stock s ON p.Id = s.ProductId 
+                    WHERE p.Id = TRY_CAST(@rawSearch AS INT) OR p.Name LIKE @search";
 
-                using (SqlDataAdapter adapt = new SqlDataAdapter(sqcmd))
+                using (SqlCommand sqcmd2 = new SqlCommand(query, conn))
                 {
-                    DataTable data = new DataTable();
-                    adapt.Fill(data);
-                    return data;
-                }
-            }
-        }
+                    sqcmd2.Parameters.AddWithValue("@rawSearch", search);
 
-        public bool ProcessSale(int productId, int quantityToSell, decimal price, out string errorMessage)
-        {
-            errorMessage = string.Empty;
+                    sqcmd2.Parameters.AddWithValue("@search", "%" + search + "%");
 
-            try
-            {
-                using (SqlConnection conn = new SqlConnection(_connectionString))
-                {
-                    conn.Open();
-                    using (SqlTransaction transaction = conn.BeginTransaction())
+                    using (SqlDataAdapter adapt = new SqlDataAdapter(sqcmd2))
                     {
-                        using (SqlCommand sqcmd = conn.CreateCommand())
-                        {
-                            sqcmd.Transaction = transaction;
-
-                            sqcmd.CommandText = "UPDATE Stock SET Quantity = Quantity - @qty WHERE ProductId = @pId AND Quantity >= @qty";
-                            sqcmd.Parameters.AddWithValue("@qty", quantityToSell);
-                            sqcmd.Parameters.AddWithValue("@pId", productId);
-
-                            int rowsAffected = sqcmd.ExecuteNonQuery();
-
-                            if (rowsAffected == 0)
-                            {
-                                errorMessage = "Insufficient stock for the requested quantity!";
-                                transaction.Rollback();
-                                return false;
-                            }
-
-                            sqcmd.Parameters.Clear();
-                            // În SQL Server, ultimul ID generat se preia cu SCOPE_IDENTITY()
-                            sqcmd.CommandText = "INSERT INTO Sales (TotalAmount) VALUES (@total); SELECT SCOPE_IDENTITY();";
-                            sqcmd.Parameters.AddWithValue("@total", price * quantityToSell);
-                            long saleId = Convert.ToInt64(sqcmd.ExecuteScalar());
-
-                            sqcmd.Parameters.Clear();
-                            sqcmd.CommandText = "INSERT INTO SaleItems (SaleId, ProductId, Quantity, UnitPrice) VALUES (@sId, @pId, @qty, @price)";
-                            sqcmd.Parameters.AddWithValue("@sId", saleId);
-                            sqcmd.Parameters.AddWithValue("@pId", productId);
-                            sqcmd.Parameters.AddWithValue("@qty", quantityToSell);
-                            sqcmd.Parameters.AddWithValue("@price", price);
-                            sqcmd.ExecuteNonQuery();
-
-                            transaction.Commit();
-                            return true;
-                        }
+                        DataTable data = new DataTable();
+                        adapt.Fill(data);
+                        return data;
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                errorMessage = "Critical transaction error: " + ex.Message;
-                return false;
-            }
         }
 
-        public bool RestockProduct(int productId, int quantityToAdd, out string errorMessage)
+        public void ProcessSale(int productId, int quantityToSell, decimal price)
         {
-            errorMessage = string.Empty;
-
-            try
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
-                using (SqlConnection conn = new SqlConnection(_connectionString))
+                conn.Open();
+                using (SqlTransaction transaction = conn.BeginTransaction())
                 {
-                    conn.Open();
-                    string query = "UPDATE Stock SET Quantity = Quantity + @qty WHERE ProductId = @pId";
-                    using (SqlCommand sqcmd = new SqlCommand(query, conn))
+                    using (SqlCommand sqcmd = conn.CreateCommand())
                     {
-                        sqcmd.Parameters.AddWithValue("@qty", quantityToAdd);
+                        sqcmd.Transaction = transaction;
+                        sqcmd.CommandText = "UPDATE Stock SET Quantity = Quantity - @qty WHERE ProductId = @pId AND Quantity >= @qty";
+                        sqcmd.Parameters.AddWithValue("@qty", quantityToSell);
                         sqcmd.Parameters.AddWithValue("@pId", productId);
 
                         int rowsAffected = sqcmd.ExecuteNonQuery();
-                        if (rowsAffected > 0)
+
+                        if (rowsAffected == 0)
                         {
-                            return true;
+                            transaction.Rollback();
+                            throw new Exception("Insufficient stock for the requested quantity!");
                         }
-                        else
-                        {
-                            errorMessage = "The selected product was not found in the inventory.";
-                            return false;
-                        }
+
+                        sqcmd.Parameters.Clear();
+                        sqcmd.CommandText = "INSERT INTO Sales (TotalAmount) VALUES (@total); SELECT SCOPE_IDENTITY();";
+                        sqcmd.Parameters.AddWithValue("@total", price * quantityToSell);
+                        long saleId = Convert.ToInt64(sqcmd.ExecuteScalar());
+
+                        sqcmd.Parameters.Clear();
+                        sqcmd.CommandText = "INSERT INTO SaleItems (SaleId, ProductId, Quantity, UnitPrice) VALUES (@sId, @pId, @qty, @price)";
+                        sqcmd.Parameters.AddWithValue("@sId", saleId);
+                        sqcmd.Parameters.AddWithValue("@pId", productId);
+                        sqcmd.Parameters.AddWithValue("@qty", quantityToSell);
+                        sqcmd.Parameters.AddWithValue("@price", price);
+                        sqcmd.ExecuteNonQuery();
+
+                        transaction.Commit();
                     }
                 }
             }
-            catch (Exception ex)
+        }
+        public void RestockProduct(int productId, int quantityToAdd)
+        {
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
-                errorMessage = "Restock error: " + ex.Message;
-                return false;
+                conn.Open();
+                string query = "UPDATE Stock SET Quantity = Quantity + @qty WHERE ProductId = @pId";
+                using (SqlCommand sqcmd = new SqlCommand(query, conn))
+                {
+                    sqcmd.Parameters.AddWithValue("@qty", quantityToAdd);
+                    sqcmd.Parameters.AddWithValue("@pId", productId);
+
+                    int rowsAffected = sqcmd.ExecuteNonQuery();
+                    if (rowsAffected == 0)
+                    {
+                        throw new Exception("Product not found or failed to restock!");
+                    }
+                }
             }
         }
 
@@ -282,29 +242,26 @@ namespace RetailApp
                 }
             }
         }
-        public bool ProcessCartSale(List<CartItem> cartItems, out string errorMessage)
-        {
-            errorMessage = string.Empty;
 
+        public void ProcessCartSale(List<CartItem> cartItems)
+        {
             if (cartItems == null || cartItems.Count == 0)
             {
-                errorMessage = "The cart is empty!";
-                return false;
+                throw new Exception("The cart is empty!");
             }
 
-            try
+            using (SqlConnection conn = new SqlConnection(_connectionString))
             {
-                using (SqlConnection conn = new SqlConnection(_connectionString))
+                conn.Open();
+                using (SqlTransaction transaction = conn.BeginTransaction())
                 {
-                    conn.Open();
-                    using (SqlTransaction transaction = conn.BeginTransaction())
+                    using (SqlCommand sqcmd = conn.CreateCommand())
                     {
-                        using (SqlCommand sqcmd = conn.CreateCommand())
-                        {
-                            sqcmd.Transaction = transaction;
+                        sqcmd.Transaction = transaction;
 
-                            // 1. Verificăm și scădem stocul pentru fiecare produs din coș
-                            foreach (var item in cartItems)
+                        try
+                        {
+                            foreach (CartItem item in cartItems)
                             {
                                 sqcmd.CommandText = "UPDATE Stock SET Quantity = Quantity - @qty WHERE ProductId = @pId AND Quantity >= @qty";
                                 sqcmd.Parameters.Clear();
@@ -314,27 +271,22 @@ namespace RetailApp
                                 int rowsAffected = sqcmd.ExecuteNonQuery();
                                 if (rowsAffected == 0)
                                 {
-                                    errorMessage = $"Insufficient stock for product: {item.ProductName}";
-                                    transaction.Rollback();
-                                    return false;
+                                    throw new Exception("Insufficient stock for product: " + item.ProductName);
                                 }
                             }
 
-                            // 2. Calculăm totalul general al bonului
                             decimal grandTotal = 0;
-                            foreach (var item in cartItems)
+                            foreach (CartItem item in cartItems)
                             {
                                 grandTotal += item.TotalPrice;
                             }
 
-                            // 3. Creăm antetul vânzării în tabela Sales
                             sqcmd.Parameters.Clear();
                             sqcmd.CommandText = "INSERT INTO Sales (TotalAmount) VALUES (@total); SELECT SCOPE_IDENTITY();";
                             sqcmd.Parameters.AddWithValue("@total", grandTotal);
                             long saleId = Convert.ToInt64(sqcmd.ExecuteScalar());
 
-                            // 4. Salvăm detaliile bonului în SaleItems
-                            foreach (var item in cartItems)
+                            foreach (CartItem item in cartItems)
                             {
                                 sqcmd.Parameters.Clear();
                                 sqcmd.CommandText = "INSERT INTO SaleItems (SaleId, ProductId, Quantity, UnitPrice) VALUES (@sId, @pId, @qty, @price)";
@@ -346,15 +298,14 @@ namespace RetailApp
                             }
 
                             transaction.Commit();
-                            return true;
+                        }
+                        catch (Exception ex)
+                        {
+                            transaction.Rollback();
+                            throw new Exception("Cart transaction error: " + ex.Message);
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                errorMessage = "Cart transaction error: " + ex.Message;
-                return false;
             }
         }
     }

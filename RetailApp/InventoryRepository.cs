@@ -12,9 +12,9 @@ namespace RetailApp
         void InitiDatabase();
         DataTable GetAllProducts();
         DataTable SearchProduct(string searchItem);
-        bool ProcessSale(int productId, int quantityToSell, decimal price, out string errorMessage);
-        bool RestockProduct(int productId, int quantityToAdd, out string errorMessage);
+        void ProcessSale(int productId, int quantityToSell, decimal price);
+        void RestockProduct(int productId, int quantityToAdd);
         DataTable GetSalesHistory();
-        bool ProcessCartSale(List<CartItem> cartItems, out string errorMessage);
+        void ProcessCartSale(List<CartItem> cartItems);
     }
 }

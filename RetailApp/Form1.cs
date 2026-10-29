@@ -17,24 +17,20 @@ namespace RetailApp
             InitializeApp();
         }
 
-        public Form1() : this(new SqlServerInventoryRepository())
-        {
-        }
-
         private void InitializeApp()
         {
             try
             {
                 _repository.InitiDatabase();
-                LoadProductsToGrid();
+                LoadingProducts();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message, "Eroare", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void LoadProductsToGrid()
+        private void LoadingProducts()
         {
             try
             {
@@ -60,12 +56,15 @@ namespace RetailApp
                 isShowingHistory = true;
                 dataGridView1.DataSource = _repository.GetSalesHistory();
                 dataGridView1.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;
+                
+                //setting the width for each column in the history view
                 if (dataGridView1.Columns["ID Sell"] != null) dataGridView1.Columns["ID Sell"].Width = 40;
                 if (dataGridView1.Columns["Date"] != null) dataGridView1.Columns["Date"].Width = 150;
                 if (dataGridView1.Columns["Product"] != null) dataGridView1.Columns["Product"].Width = 200;
                 if (dataGridView1.Columns["Quantity"] != null) dataGridView1.Columns["Quantity"].Width = 60;
                 if (dataGridView1.Columns["Price Unit (€)"] != null) dataGridView1.Columns["Price Unit (€)"].Width = 80;
                 if (dataGridView1.Columns["Total (€)"] != null) dataGridView1.Columns["Total (€)"].Width = 101;
+                
                 btnRestock.Enabled = false;
                 textBox1.Enabled = false;
                 txtSearch.Enabled = false;
@@ -96,8 +95,9 @@ namespace RetailApp
         {
             if (!isShowingHistory && dataGridView1.Columns[e.ColumnIndex].Name == "Quantity")
             {
-                if (e.Value != null && int.TryParse(e.Value.ToString(), out int stockValue))
+                if (e.Value is int)
                 {
+                    int stockValue = (int)e.Value;
                     DataGridViewRow row = dataGridView1.Rows[e.RowIndex];
 
                     if (stockValue < 10)
@@ -125,24 +125,28 @@ namespace RetailApp
             int pId = Convert.ToInt32(dataGridView1.SelectedRows[0].Cells["Id"].Value);
             decimal price = Convert.ToDecimal(dataGridView1.SelectedRows[0].Cells["Price (€)"].Value);
 
-            if (!int.TryParse(textBox1.Text, out int quantityToSell) || quantityToSell <= 0)
+            try
             {
-                MessageBox.Show("Please enter a valid quantity (positive whole number)!", "Validation error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+                int quantityToSell = Convert.ToInt32(textBox1.Text);
 
-            bool success = _repository.ProcessSale(pId, quantityToSell, price, out string errorMessage);
+                if (quantityToSell <= 0)
+                {
+                    MessageBox.Show("Please enter a positive whole number!", "Validation error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
 
-            if (success)
-            {
-                MessageBox.Show($"Sale recorded successfully!\nTotal: {price * quantityToSell} €", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                _repository.ProcessSale(pId, quantityToSell, price);
+
+                decimal total = price * quantityToSell;
+                MessageBox.Show("Sale recorded successfully!\nTotal: " + total + " €", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
                 textBox1.Clear();
                 txtSearch.Clear();
-                LoadProductsToGrid();
+                LoadingProducts();
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show(errorMessage, "Transaction Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Invalid quantity or transaction error: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -155,28 +159,34 @@ namespace RetailApp
             }
 
             int productId = Convert.ToInt32(dataGridView1.SelectedRows[0].Cells["Id"].Value);
-            string productName = dataGridView1.SelectedRows.Count > 0
-                ? dataGridView1.SelectedRows[0].Cells["Product"].Value?.ToString() ?? string.Empty
-                : string.Empty;
 
-            if (!int.TryParse(textBox1.Text, out int quantityToAdd) || quantityToAdd <= 0)
+            string productName = string.Empty;
+            var cellValue = dataGridView1.SelectedRows[0].Cells["Product"].Value;
+            if (cellValue != null)
             {
-                MessageBox.Show("Please enter a valid quantity to restock!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                productName = cellValue.ToString();
             }
 
-            bool success = _repository.RestockProduct(productId, quantityToAdd, out string errorMessage);
-
-            if (success)
+            try
             {
-                MessageBox.Show($"Stock successfully added for product:\n{productName} (+{quantityToAdd} units)", "Success Restock", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                int quantityToAdd = Convert.ToInt32(textBox1.Text);
+
+                if (quantityToAdd <= 0)
+                {
+                    MessageBox.Show("Please enter a positive whole number!", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                _repository.RestockProduct(productId, quantityToAdd);
+
+                MessageBox.Show("Stock successfully added for product:\n" + productName + " (+" + quantityToAdd + " units)", "Success Restock", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
                 textBox1.Clear();
                 txtSearch.Clear();
-                LoadProductsToGrid();
+                LoadingProducts(); 
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show(errorMessage, "Error Restock", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(ex.Message, "Error Restock", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -189,7 +199,7 @@ namespace RetailApp
             else
             {
                 txtSearch.Clear();
-                LoadProductsToGrid();
+                LoadingProducts();
             }
         }
 
@@ -218,35 +228,53 @@ namespace RetailApp
             string pName = nameCell.ToString() ?? string.Empty;
             decimal price = Convert.ToDecimal(priceCell);
 
-            if (!int.TryParse(textBox1.Text, out int qty) || qty <= 0)
+            try
             {
-                MessageBox.Show("Please enter a valid quantity!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
+                int qty = Convert.ToInt32(textBox1.Text);
 
-            var existingItem = currentCart.Find(x => x.ProductId == pId);
-            if (existingItem != null)
-            {
-                existingItem.Quantity += qty;
-            }
-            else
-            {
-                currentCart.Add(new CartItem
+                if (qty <= 0)
                 {
-                    ProductId = pId,
-                    ProductName = pName,
-                    UnitPrice = price,
-                    Quantity = qty
-                });
-            }
+                    MessageBox.Show("Please enter a positive whole number!", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
 
-            RefreshCartGrid();
-            textBox1.Clear();
+                CartItem existingItem = null;
+                foreach (CartItem item in currentCart)
+                {
+                    if (item.ProductId == pId)
+                    {
+                        existingItem = item;
+                        break;
+                    }
+                }
+
+                if (existingItem != null)
+                {
+                    existingItem.Quantity += qty;
+                }
+                else
+                {
+                    CartItem newItem = new CartItem();
+                    newItem.ProductId = pId;
+                    newItem.ProductName = pName;
+                    newItem.UnitPrice = price;
+                    newItem.Quantity = qty;
+
+                    currentCart.Add(newItem);
+                }
+
+                RefreshCartGrid();
+                textBox1.Clear();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Invalid quantity format: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         private void RefreshCartGrid()
         {
-            dataGridViewCart.DataSource = null;
+            dataGridViewCart.DataSource = null;//reset list to refresh the grid
             dataGridViewCart.DataSource = currentCart;
             dataGridViewCart.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 
@@ -263,25 +291,25 @@ namespace RetailApp
                 return;
             }
 
-            bool success = _repository.ProcessCartSale(currentCart, out string errorMessage);
-
-            if (success)
+            try
             {
+                _repository.ProcessCartSale(currentCart);
+
                 decimal totalSum = 0;
-                foreach (var item in currentCart)
+                foreach (CartItem item in currentCart)
                 {
                     totalSum += item.TotalPrice;
                 }
 
-                MessageBox.Show($"Sale successfully completed!\nGrand Total: {totalSum} €", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("Sale successfully completed!\nGrand Total: " + totalSum + " €", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 currentCart.Clear();
                 RefreshCartGrid();
-                LoadProductsToGrid();
+                LoadingProducts();
             }
-            else
+            catch (Exception ex)
             {
-                MessageBox.Show(errorMessage, "Checkout Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show(ex.Message, "Checkout Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
         private void btnRemove_Click(object sender, EventArgs e)
@@ -297,7 +325,9 @@ namespace RetailApp
                 return;
             }
             var selectedRow = dataGridViewCart.SelectedRows[0];
-            if (selectedRow.DataBoundItem is CartItem itemToRemove) { 
+            if (selectedRow.DataBoundItem is CartItem)
+            {
+                CartItem itemToRemove = (CartItem)selectedRow.DataBoundItem;
                 currentCart.Remove(itemToRemove);
                 RefreshCartGrid();
             }
